@@ -1,9 +1,13 @@
 const express = require("express");
 const cors = require("cors");
+const axios = require("axios");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// 🔥 URL DE MAKE (REEMPLAZA)
+const MAKE_WEBHOOK = "https://hook.us2.make.com/e7k25gzoxymresu9dtcdnmtw2gotopog";
 
 // ===== "BASE DE DATOS" EN MEMORIA =====
 let telemetria = [];
@@ -22,6 +26,16 @@ function calcularCriticidad(valor) {
   return "ALTA";
 }
 
+// Enviar a Make
+async function enviarAMake(data) {
+  try {
+    await axios.post(MAKE_WEBHOOK, data);
+    console.log("📡 Enviado a Make");
+  } catch (error) {
+    console.error("❌ Error enviando a Make:", error.message);
+  }
+}
+
 // Lógica de negocio (15 minutos)
 function evaluarCaso(id_sector, valor = null) {
   const ahora = new Date();
@@ -36,12 +50,10 @@ function evaluarCaso(id_sector, valor = null) {
 
   let estado = "EN_VALIDACION";
 
-  // Regla 1: presión baja + 1 reporte baja_presion
   if (valor !== null && valor < 150 && reportesBaja.length >= 1) {
     estado = "ABIERTO";
   }
 
-  // Regla 2: 2 o más reportes
   if (reportesSector.length >= 2) {
     estado = "ABIERTO";
   }
@@ -56,10 +68,14 @@ function evaluarCaso(id_sector, valor = null) {
 }
 
 // ===== ENDPOINT TELEMETRÍA =====
-app.post("/api/v1/telemetria", (req, res) => {
+app.post("/api/v1/telemetria", async (req, res) => {
   const data = req.body;
 
-  // Guardar telemetría
+  // VALIDACIÓN BÁSICA
+  if (!data.valor || !data.ubicacion?.id_sector || !data.ubicacion?.id_activo) {
+    return res.status(400).json({ error: "Datos incompletos en telemetría" });
+  }
+
   telemetria.push(data);
 
   const resultado = evaluarCaso(
@@ -80,20 +96,18 @@ app.post("/api/v1/telemetria", (req, res) => {
     evidencia_url: null
   };
 
-  console.log("📡 Telemetría recibida:", data);
-  console.log("🚨 Incidente generado:", incidente);
+  console.log("📡 Telemetría:", data);
+  console.log("🚨 Incidente:", incidente);
 
-  res.json({
-    ok: true,
-    incidente
-  });
+  await enviarAMake(incidente);
+
+  res.json({ ok: true, incidente });
 });
 
 // ===== ENDPOINT REPORTE =====
-app.post("/api/v1/reporte", (req, res) => {
+app.post("/api/v1/reporte", async (req, res) => {
   const data = req.body;
 
-  // ===== VALIDACIONES =====
   if (!data.canal || !data.tipo || !data.descripcion || !data.marca_tiempo) {
     return res.status(400).json({ error: "Faltan campos obligatorios" });
   }
@@ -110,7 +124,6 @@ app.post("/api/v1/reporte", (req, res) => {
     return res.status(400).json({ error: "Ubicación incompleta" });
   }
 
-  // Guardar reporte
   reportes.push(data);
 
   const resultado = evaluarCaso(data.ubicacion.id_sector);
@@ -128,13 +141,12 @@ app.post("/api/v1/reporte", (req, res) => {
     evidencia_url: null
   };
 
-  console.log("📢 Reporte recibido:", data);
-  console.log("🚨 Incidente generado:", incidente);
+  console.log("📢 Reporte:", data);
+  console.log("🚨 Incidente:", incidente);
 
-  res.json({
-    ok: true,
-    incidente
-  });
+  await enviarAMake(incidente);
+
+  res.json({ ok: true, incidente });
 });
 
 // ===== SERVIDOR =====
