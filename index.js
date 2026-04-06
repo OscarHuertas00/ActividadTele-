@@ -16,7 +16,7 @@ let reportes = [];
 // ===== CONFIGURACIONES =====
 const canales = ["whatsapp", "call_center", "app"];
 const tipos = ["baja_presion", "sin_servicio", "fuga"];
-
+  
 // ===== FUNCIONES =====
 
 // Criticidad
